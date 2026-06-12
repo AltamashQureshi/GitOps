@@ -1,4 +1,4 @@
-name: Java CI with Maven
+name: Java CI/CD with Docker
 
 on:
   push:
@@ -6,13 +6,17 @@ on:
   pull_request:
     branches: [ main ]
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
+  # ─── Job 1: Build & Test ───────────────────────────────
   build:
     runs-on: ubuntu-latest
 
     defaults:
       run:
-        working-directory: github-actions-demo   # 👈 add this
+        working-directory: github-actions-demo
 
     steps:
       - name: Checkout code
@@ -34,8 +38,33 @@ jobs:
       - name: Package JAR
         run: mvn package -DskipTests
 
-      - name: Upload JAR
+      - name: Upload JAR artifact
         uses: actions/upload-artifact@v4
         with:
           name: app-jar
-          path: github-actions-demo/target/*.jar  # 👈 full path here
+          path: github-actions-demo/target/*.jar
+
+  # ─── Job 2: Build & Push Docker Image ─────────────────
+  docker:
+    runs-on: ubuntu-latest
+    needs: build                              # only runs if build job passes
+    if: github.ref == 'refs/heads/main'       # only on main branch, not PRs
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./github-actions-demo      # where your Dockerfile is
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/github-actions-demo:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/github-actions-demo:${{ github.sha }}
